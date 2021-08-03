@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="GateKeeper-war" default="dist">
+
+    <property environment="env"/>
+    <property file="/Users/jinkyulee/IdeaProjects/GateKeeperAdmin/build_deploy.properties"/>
+    <property name="part.name" value="${build.partname}"/>
+    <property name="part.version" value="${build.version}"/>
+    <property name="part.charset" value="${build.charset}"/>
+    <property name="target" value="1.8"/>
+    <property name="source" value="1.8"/>
+    <property name="build.source.dir" value="bin"/>
+
+
+    <target name="clean-all" depends="clean,init,compile" description="clean all"/>
+    <target name="dist" depends="war,GateKeeper-config" description="default build"/>
+    <!--<target name="deploy" depends="stg-api-batch" description="copy GateKeeper war to server" /> -->
+
+    <path id="compile.classpath">
+        <fileset dir="WebContent/WEB-INF/lib">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build.source.dir}"/>
+        <mkdir dir="dist"/>
+    </target>
+
+    <target name="compile" depends="init-compile">
+        <javac destdir="${build.source.dir}" debug="true" includeantruntime="false" encoding="UTF-8">
+            <src path="src/main"/>
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+
+    <target name="init-compile">
+        <copy todir="${build.source.dir}" includeemptydirs="false">
+            <fileset dir="src/main/java" excludes="**/*.java, config/*"/>
+        </copy>
+        <copy todir="${build.source.dir}" includeemptydirs="false">
+            <fileset dir="src/main/resource" excludes="**/*.java, config/*"/>
+        </copy>
+    </target>
+
+    <target name="war">
+        <war destfile="dist/GateKeeper-Admin.war" webxml="WebContent/WEB-INF/web.xml">
+            <fileset dir="WebContent">
+                <exclude name="resources/**/*"/>
+            </fileset>
+            <classes dir="${build.source.dir}"/>
+        </war>
+    </target>
+
+    <target name="GateKeeper-config">
+        <tar destfile="dist/config.tar/">
+            <tarfileset dir="src/main/resource/config">
+                <include name="**/*"/>
+            </tarfileset>
+        </tar>
+    </target>
+
+    <target name="GateKeeper-static">
+        <tar destfile="dist/GateKeeper-static.tar/">
+            <tarfileset dir="WebContent">
+                <include name="resources/**/*"/>
+            </tarfileset>
+        </tar>
+    </target>
+
+    <target name="clean">
+        <delete dir="dist" includeemptydirs="true"/>
+        <delete dir="${build.source.dir}" includeemptydirs="true"/>
+    </target>
+
+
+    <!-- base deploy -->
+
+    <target name="base-deploy" depends="dist">
+
+        <sshexec host="${deploy.ssh.ip}"
+                 port="${deploy.ssh.port}"
+                 trust="true"
+                 username="${deploy.username}"
+                 password="${deploy.passphrase}"
+                 command="cp ${deploy.base.path}/GateKeeper-Admin.war ${deploy.base.path}/GateKeeper-Admin.war.last"
+                 failonerror="false"/>
+
+        <scp trust="true" todir="${deploy.username}@${deploy.ssh.ip}:${deploy.base.path}"
+             port="${deploy.ssh.port}"
+             password="${deploy.passphrase}">
+            <fileset dir="dist">
+                <include name="GateKeeper-Admin.war"/>
+            </fileset>
+        </scp>
+
+
+        <sshexec host="${deploy.ssh.ip}"
+                 port="${deploy.ssh.port}"
+                 trust="true"
+                 username="${deploy.username}"
+                 password="${deploy.passphrase}"
+                 command="cp ${deploy.base.path}/config.tar ${deploy.base.path}/config.tar.last" failonerror="false"/>
+
+        <scp trust="true" todir="${deploy.username}@${deploy.ssh.ip}:${deploy.base.path}"
+             port="${deploy.ssh.port}"
+             password="${deploy.passphrase}">
+            <fileset dir="dist">
+                <include name="config.tar"/>
+            </fileset>
+        </scp>
+
+    </target>
+
+
+    <!-- stg1 deploy & s3 upload -->
+
+    <target name="stg1-deploy-s3-upload" depends="dist">
+
+        <sshexec host="${deploy.ssh.ip}"
+                 port="${deploy.ssh.port}"
+                 trust="true"
+                 username="${deploy.username}"
+                 password="${deploy.passphrase}"
+                 command="cp ${deploy.stg1.path}/GateKeeper-Admin.war ${deploy.stg1.path}/GateKeeper-Admin.war.last;
+		                  cp ${deploy.base.path}/GateKeeper-Admin.war ${deploy.stg1.path}/GateKeeper-Admin.war;
+			              cp ${deploy.stg1.path}/config.tar ${deploy.stg1.path}/config.tar.last; 
+		                  cp ${deploy.base.path}/config.tar ${deploy.stg1.path}/config.tar;
+                   		  aws s3 cp ${deploy.stg1.path}/GateKeeper-Admin.war s3://${deploy.stg1.bucket.name}/${deploy.s3.route}/GateKeeper-Admin.war --region ${deploy.s3.region} --profile stgS3;
+		                  aws s3 cp ${deploy.stg1.path}/config.tar s3://${deploy.stg1.bucket.name}/${deploy.s3.route}/config.tar --region ${deploy.s3.region} --profile stgS3 "
+                 failonerror="false"/>
+    </target>
+
+
+    <!-- stg2 deploy & s3 upload -->
+
+    <target name="stg2-deploy-s3-upload" depends="dist">
+
+        <sshexec host="${deploy.ssh.ip}"
+                 port="${deploy.ssh.port}"
+                 trust="true"
+                 username="${deploy.username}"
+                 password="${deploy.passphrase}"
+                 command="cp ${deploy.stg2.path}/GateKeeper-Admin.war ${deploy.stg2.path}/GateKeeper-Admin.war.last;
+                          cp ${deploy.base.path}/GateKeeper-Admin.war ${deploy.stg2.path}/GateKeeper-Admin.war;
+                          cp ${deploy.stg2.path}/config.tar ${deploy.stg2.path}/config.tar.last; 
+                          cp ${deploy.base.path}/config.tar ${deploy.stg2.path}/config.tar;
+                          aws s3 cp ${deploy.stg2.path}/GateKeeper-Admin.war s3://${deploy.stg2.bucket.name}/${deploy.s3.route}/GateKeeper-Admin.war --region ${deploy.s3.region} --profile stgS3;
+        	              aws s3 cp ${deploy.stg2.path}/config.tar s3://${deploy.stg2.bucket.name}/${deploy.s3.route}/config.tar --region ${deploy.s3.region} --profile stgS3 "
+                 failonerror="false"/>
+
+
+    </target>
+
+
+    <!-- prd deploy s3 upload -->
+
+    <target name="prd-deploy-s3-upload" depends="dist">
+
+        <sshexec host="${deploy.ssh.ip}"
+                 port="${deploy.ssh.port}"
+                 trust="true"
+                 username="${deploy.username}"
+                 password="${deploy.passphrase}"
+                 command="cp ${deploy.prd.path}/GateKeeper-Admin.war ${deploy.prd.path}/GateKeeper-Admin.war.last;
+                          cp ${deploy.base.path}/GateKeeper-Admin.war ${deploy.prd.path}/GateKeeper-Admin.war;
+                          cp ${deploy.prd.path}/config.tar ${deploy.prd.path}/config.tar.last; 
+                          cp ${deploy.base.path}/config.tar ${deploy.prd.path}/config.tar;
+           	              aws s3 cp ${deploy.prd.path}/GateKeeper-Admin.war s3://${deploy.prd.bucket.name}/${deploy.s3.route}/GateKeeper-Admin.war --region ${deploy.s3.region};
+        	              aws s3 cp ${deploy.prd.path}/config.tar s3://${deploy.prd.bucket.name}/${deploy.s3.route}/config.tar --region ${deploy.s3.region}"
+                 failonerror="false"/>
+
+    </target>
+
+
+</project>
